@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS Loan & EMI Manager - Multi-User Cloud Sync</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            blue: '#0052ff', // Signature vibrant POS blue
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f8f9fc;
+        }
+        [x-cloak] { display: none !important; }
+        
+        /* Custom smooth scrollbars */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen pb-12" x-data="posApp()" x-init="initApp()">
+
+    <!-- Toast Notification Banner -->
+    <div x-show="toast.show" 
+         x-transition:enter="transition ease-out duration-300 transform"
+         x-transition:enter-start="opacity-0 translate-y-[-20px]"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-200 transform"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 translate-y-[-20px]"
+         x-cloak
+         class="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-xl flex items-center space-x-3 text-xs font-bold border"
+         :class="toast.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'">
+        <i class="fa-solid" :class="toast.type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check'"></i>
+        <span x-text="toast.message"></span>
+    </div>
+
+    <!-- APP CONTAINER -->
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
+
+        <!-- ====================================================================== -->
+        <!-- 1. AUTHENTICATION SECTION (Cloud / Local Fallback Auth)                -->
+        <!-- ====================================================================== -->
+        <template x-if="!userLoggedIn">
+            <div class="min-h-[85vh] flex flex-col justify-center items-center py-8">
+                <div class="w-full max-w-md bg-white rounded-3xl border border-slate-200/90 p-8 shadow-xl space-y-6">
+                    
+                    <!-- App Logo & Branding Header -->
+                    <div class="text-center space-y-2">
+                        <div class="w-16 h-16 rounded-2xl bg-brand-blue/10 text-brand-blue flex items-center justify-center mx-auto text-2xl font-black shadow-inner">
+                            <i class="fa-solid fa-receipt"></i>
+                        </div>
+                        <h1 class="text-2xl font-black text-slate-900 tracking-tight">POS Loan Manager</h1>
+                        <p class="text-xs font-medium text-slate-500">Cloud Multi-User Loan & EMI Management System</p>
+                    </div>
+
+                    <!-- Mode Toggle: Login vs Register -->
+                    <div class="bg-slate-100 p-1 rounded-2xl flex text-xs font-bold">
+                        <button @click="authMode = 'login'" 
+                                class="flex-1 py-2 rounded-xl transition text-center"
+                                :class="authMode === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'">
+                            Sign In
+                        </button>
+                        <button @click="authMode = 'register'" 
+                                class="flex-1 py-2 rounded-xl transition text-center"
+                                :class="authMode === 'register' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'">
+                            Create Account
+                        </button>
+                    </div>
+
+                    <!-- MODE 1: LOGIN FORM -->
+                    <div x-show="authMode === 'login'" x-transition class="space-y-4">
+                        <form @submit.prevent="handleLogin()" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Email Address</label>
+                                <div class="relative flex items-center">
+                                    <i class="fa-solid fa-envelope absolute left-3.5 text-slate-400 text-sm"></i>
+                                    <input type="email" 
+                                           x-model="loginForm.email" 
+                                           placeholder="merchant@pos.com" 
+                                           required 
+                                           class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Password</label>
+                                <div class="relative flex items-center">
+                                    <i class="fa-solid fa-lock absolute left-3.5 text-slate-400 text-sm"></i>
+                                    <input :type="showPassword ? 'text' : 'password'" 
+                                           x-model="loginForm.password" 
+                                           placeholder="••••••••" 
+                                           required 
+                                           class="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                                    <button type="button" @click="showPassword = !showPassword" class="absolute right-3.5 text-slate-400 hover:text-slate-600 text-xs">
+                                        <i class="fa-solid" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button type="submit" 
+                                    :disabled="authLoading"
+                                    class="w-full py-3.5 bg-brand-blue hover:bg-blue-700 text-white font-bold rounded-xl text-sm shadow-lg shadow-blue-500/25 active:scale-95 transition flex items-center justify-center space-x-2 disabled:opacity-50">
+                                <span x-show="!authLoading">Sign In to Account</span>
+                                <span x-show="authLoading" class="flex items-center space-x-2">
+                                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                                    <span>Authenticating...</span>
+                                </span>
+                            </button>
+                        </form>
+
+                        <div class="mt-4 pt-4 border-t border-slate-100 space-y-2">
+                            <button @click="quickDemoLogin()" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2">
+                                <i class="fa-solid fa-bolt text-amber-500"></i>
+                                <span>Demo Account Sign In</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- MODE 2: REGISTRATION FORM -->
+                    <div x-show="authMode === 'register'" x-transition class="space-y-4">
+                        <form @submit.prevent="handleRegister()" class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
+                                <input type="text" 
+                                       x-model="registerForm.fullName" 
+                                       placeholder="e.g. Rajesh Kumar" 
+                                       required 
+                                       class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Business / Store Name *</label>
+                                <input type="text" 
+                                       x-model="registerForm.storeName" 
+                                       placeholder="e.g. Apex Electronics POS" 
+                                       required 
+                                       class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Mobile Phone *</label>
+                                    <input type="tel" 
+                                           x-model="registerForm.phone" 
+                                           placeholder="9876543210" 
+                                           required 
+                                           class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
+                                    <input type="email" 
+                                           x-model="registerForm.email" 
+                                           placeholder="rajesh@pos.com" 
+                                           required
+                                           class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Set Account Password *</label>
+                                <input type="password" 
+                                       x-model="registerForm.password" 
+                                       placeholder="Minimum 6 characters" 
+                                       minlength="6"
+                                       required 
+                                       class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                            </div>
+
+                            <div class="p-3 bg-blue-50/70 rounded-xl border border-blue-100 text-[11px] text-blue-800 flex items-start space-x-2">
+                                <i class="fa-solid fa-cloud text-brand-blue mt-0.5"></i>
+                                <span>Your customer loan records will be synced securely under your isolated profile.</span>
+                            </div>
+
+                            <button type="submit" 
+                                    :disabled="authLoading"
+                                    class="w-full py-3.5 bg-brand-blue hover:bg-blue-700 text-white font-bold rounded-xl text-sm shadow-lg shadow-blue-500/25 active:scale-95 transition flex items-center justify-center space-x-2 disabled:opacity-50">
+                                <span x-show="!authLoading">Create Cloud Account</span>
+                                <span x-show="authLoading" class="flex items-center space-x-2">
+                                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                                    <span>Registering Account...</span>
+                                </span>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Cloud Storage Status Badge -->
+                    <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+                        <span class="flex items-center space-x-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>Database Sync Active</span>
+                        </span>
+                        <span class="font-bold text-slate-600" x-text="syncStatus">Initializing...</span>
+                    </div>
+
+                </div>
+            </div>
+        </template>
+
+        <!-- ====================================================================== -->
+        <!-- 2. MAIN APPLICATION WORKSPACE (Accessible when Logged In)               -->
+        <!-- ====================================================================== -->
+        <template x-if="userLoggedIn">
+            <div class="space-y-6">
+                
+                <!-- Top Header Navigation / User Banner -->
+                <header class="flex items-center justify-between pt-2">
+                    <div>
+                        <div class="flex items-center space-x-2 mb-1">
+                            <span class="text-[11px] font-extrabold tracking-wider text-brand-blue uppercase" x-text="currentUserProfile ? currentUserProfile.storeName : 'POS Manager'"></span>
+                            <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
+                                <i class="fa-solid fa-cloud text-[9px] mr-0.5"></i> Connected
+                            </span>
+                        </div>
+                        <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight" x-text="getGreeting() + ', ' + (currentUserProfile ? currentUserProfile.fullName.split(' ')[0] : 'User')">Good morning</h1>
+                        <p class="text-xs font-mono font-semibold text-slate-500 mt-0.5" x-text="'User ID: ' + currentUserId"></p>
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                        <!-- User Profile Button & Dropdown -->
+                        <div class="relative" x-data="{ open: false }">
+                            <button @click="open = !open" class="w-11 h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-sm border border-slate-200 transition">
+                                <i class="fa-solid fa-user-circle text-lg"></i>
+                            </button>
+                            <!-- Dropdown Menu -->
+                            <div x-show="open" @click.away="open = false" x-cloak class="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 text-xs font-medium">
+                                <div class="px-4 py-2 border-b border-slate-100">
+                                    <div class="font-bold text-slate-900" x-text="currentUserProfile ? currentUserProfile.fullName : 'User Profile'"></div>
+                                    <div class="text-[10px] text-slate-400 truncate" x-text="currentUserProfile ? currentUserProfile.email : ''"></div>
+                                    <div class="text-[10px] text-brand-blue font-mono font-bold mt-1" x-text="'UID: ' + currentUserId"></div>
+                                </div>
+                                <button @click="openProfileModal(); open = false;" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 flex items-center space-x-2">
+                                    <i class="fa-solid fa-id-card text-brand-blue"></i>
+                                    <span>View / Edit Profile</span>
+                                </button>
+                                <button @click="forceSync(); open = false;" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 flex items-center space-x-2">
+                                    <i class="fa-solid fa-rotate text-emerald-600"></i>
+                                    <span>Sync Cloud Data</span>
+                                </button>
+                                <button @click="logoutUser()" class="w-full text-left px-4 py-2 hover:bg-rose-50 text-rose-600 font-bold flex items-center space-x-2 border-t border-slate-100">
+                                    <i class="fa-solid fa-right-from-bracket"></i>
+                                    <span>Sign Out Account</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Add Loan Button -->
+                        <button @click="openModal('add')" class="w-11 h-11 rounded-2xl bg-brand-blue hover:bg-blue-700 text-white flex items-center justify-center shadow-lg shadow-blue-500/25 transition-transform active:scale-95" title="Quick Add Loan">
+                            <i class="fa-solid fa-plus text-base"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Search Bar with Filter Trigger -->
+                <div class="relative flex items-center">
+                    <div class="relative flex-1">
+                        <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-base"></i>
+                        <input type="text" 
+                               x-model="searchQuery" 
+                               placeholder="Search customers, phone or loan IDs" 
+                               class="w-full pl-11 pr-10 py-3.5 bg-white border border-slate-200/90 rounded-2xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue shadow-sm transition">
+                        <button x-show="searchQuery" @click="searchQuery = ''" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1">
+                            <i class="fa-solid fa-xmark text-xs"></i>
+                        </button>
+                    </div>
+                    <button @click="statusFilter = (statusFilter === 'all' ? 'dp_due' : 'all')" 
+                            class="ml-3 p-3.5 bg-white border border-slate-200/90 rounded-2xl text-slate-500 hover:text-brand-blue hover:border-brand-blue shadow-sm transition"
+                            title="Toggle Filter">
+                        <i class="fa-solid fa-sliders text-base"></i>
+                    </button>
+                </div>
+
+                <!-- Portfolio Overview Section -->
+                <section class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-base font-bold text-slate-900">Portfolio overview</h2>
+                        <span class="text-xs font-semibold text-slate-400 flex items-center space-x-1">
+                            <span class="w-1.5 h-1.5 rounded-full" :class="isSyncing ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'"></span>
+                            <span x-text="isSyncing ? 'Saving to Cloud...' : 'Synced to Account'"></span>
+                        </span>
+                    </div>
+
+                    <!-- Metric Cards Grid -->
+                    <div class="grid grid-cols-3 gap-3">
+                        <!-- Stat 1: Active Loans -->
+                        <div @click="statusFilter = 'all'" 
+                             class="bg-white p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between h-28"
+                             :class="statusFilter === 'all' ? 'border-brand-blue ring-2 ring-brand-blue/10 bg-blue-50/10' : 'border-slate-200/80 hover:border-slate-300 shadow-sm'">
+                            <div class="w-8 h-8 rounded-xl bg-blue-100/70 text-brand-blue flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-briefcase"></i>
+                            </div>
+                            <div>
+                                <div class="text-2xl font-extrabold text-slate-900 leading-none" x-text="stats.totalLoans">0</div>
+                                <div class="text-[12px] font-medium text-slate-500 mt-1">Active loans</div>
+                            </div>
+                        </div>
+
+                        <!-- Stat 2: Pending DP -->
+                        <div @click="statusFilter = 'dp_due'" 
+                             class="bg-white p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between h-28"
+                             :class="statusFilter === 'dp_due' ? 'border-amber-500 ring-2 ring-amber-500/10 bg-amber-50/10' : 'border-slate-200/80 hover:border-slate-300 shadow-sm'">
+                            <div class="w-8 h-8 rounded-xl bg-amber-100/70 text-amber-600 flex items-center justify-center text-sm">
+                                <i class="fa-regular fa-clock"></i>
+                            </div>
+                            <div>
+                                <div class="text-2xl font-extrabold text-slate-900 leading-none" x-text="stats.pendingDpCount">0</div>
+                                <div class="text-[12px] font-medium text-slate-500 mt-1">Pending DP</div>
+                            </div>
+                        </div>
+
+                        <!-- Stat 3: Fully Paid -->
+                        <div @click="statusFilter = 'cleared'" 
+                             class="bg-white p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between h-28"
+                             :class="statusFilter === 'cleared' ? 'border-emerald-500 ring-2 ring-emerald-500/10 bg-emerald-50/10' : 'border-slate-200/80 hover:border-slate-300 shadow-sm'">
+                            <div class="w-8 h-8 rounded-xl bg-emerald-100/70 text-emerald-600 flex items-center justify-center text-sm">
+                                <i class="fa-regular fa-circle-check"></i>
+                            </div>
+                            <div>
+                                <div class="text-2xl font-extrabold text-slate-900 leading-none" x-text="stats.fullyPaidCount">0</div>
+                                <div class="text-[12px] font-medium text-slate-500 mt-1">Fully paid</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Loan Records Section -->
+                <section class="space-y-4 pt-2">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-bold text-slate-900">Loan records</h2>
+                        <button @click="openModal('add')" class="bg-brand-blue hover:bg-blue-700 text-white font-semibold text-xs px-3.5 py-2.5 rounded-xl flex items-center shadow-md shadow-blue-500/20 active:scale-95 transition">
+                            <i class="fa-solid fa-plus mr-1.5 text-[10px]"></i> New loan
+                        </button>
+                    </div>
+
+                    <!-- Status Filter Tabs -->
+                    <div class="flex items-center space-x-2 overflow-x-auto custom-scrollbar pb-1">
+                        <button @click="statusFilter = 'all'" 
+                                class="px-4 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap"
+                                :class="statusFilter === 'all' ? 'bg-blue-100 text-brand-blue font-bold' : 'bg-slate-200/60 text-slate-600 hover:bg-slate-200'">
+                            All records
+                        </button>
+                        <button @click="statusFilter = 'dp_due'" 
+                                class="px-4 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap"
+                                :class="statusFilter === 'dp_due' ? 'bg-blue-100 text-brand-blue font-bold' : 'bg-slate-200/60 text-slate-600 hover:bg-slate-200'">
+                            Pending DP
+                        </button>
+                        <button @click="statusFilter = 'pending'" 
+                                class="px-4 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap"
+                                :class="statusFilter === 'pending' ? 'bg-blue-100 text-brand-blue font-bold' : 'bg-slate-200/60 text-slate-600 hover:bg-slate-200'">
+                            Pending EMIs
+                        </button>
+                        <button @click="statusFilter = 'cleared'" 
+                                class="px-4 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap"
+                                :class="statusFilter === 'cleared' ? 'bg-blue-100 text-brand-blue font-bold' : 'bg-slate-200/60 text-slate-600 hover:bg-slate-200'">
+                            Fully paid
+                        </button>
+                    </div>
+
+                    <!-- Customer Cards List -->
+                    <div class="space-y-3">
+                        <template x-for="customer in filteredCustomers" :key="customer.id">
+                            <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition">
+                                
+                                <!-- Card Header -->
+                                <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+                                    <div class="flex items-center space-x-3 cursor-pointer" @click="viewCustomerDetails(customer)">
+                                        <div class="w-10 h-10 rounded-xl bg-blue-100/80 text-brand-blue font-bold text-sm flex items-center justify-center tracking-tight" x-text="getInitials(customer.name)">
+                                        </div>
+                                        <div>
+                                            <h3 class="font-bold text-slate-900 text-base leading-tight hover:text-brand-blue transition" x-text="customer.name"></h3>
+                                            <p class="text-xs font-medium text-slate-400 mt-0.5">
+                                                <span x-text="customer.loanId"></span> · <span x-text="customer.productDetails"></span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button @click="viewCustomerDetails(customer)" class="text-slate-400 hover:text-slate-600 p-1">
+                                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                                    </button>
+                                </div>
+
+                                <!-- Financial Row -->
+                                <div class="grid grid-cols-2 gap-4 py-3 text-sm">
+                                    <div>
+                                        <span class="text-xs font-medium text-slate-400 block mb-0.5">Monthly EMI</span>
+                                        <span class="font-bold text-slate-900 text-base" x-text="formatCurrency(customer.monthlyEmiAmount)"></span>
+                                    </div>
+                                    <div class="text-right">
+                                        <span class="text-xs font-medium text-slate-400 block mb-0.5">Down payment</span>
+                                        <button @click="toggleDpStatus(customer)" class="inline-block focus:outline-none">
+                                            <span class="text-xs font-bold px-2 py-0.5 rounded-full"
+                                                  :class="customer.dpStatus === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'"
+                                                  x-text="customer.dpStatus === 'Paid' ? 'Paid' : 'Pending'">
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- EMI Progress Bar -->
+                                <div class="space-y-1.5 pt-1">
+                                    <div class="flex items-center justify-between text-xs font-medium">
+                                        <span class="text-slate-400">EMI progress</span>
+                                        <span class="text-slate-700 font-semibold" x-text="getPaidCount(customer) + '/' + customer.numberOfEmis + ' paid'"></span>
+                                    </div>
+                                    <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                        <div class="h-full bg-brand-blue rounded-full transition-all duration-300" 
+                                             :style="'width: ' + Math.min(100, Math.round((getPaidCount(customer) / customer.numberOfEmis) * 100)) + '%'">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Card Footer -->
+                                <div class="pt-3.5 mt-2 flex items-center justify-between text-xs">
+                                    <div class="text-slate-500 font-medium">
+                                        <span x-text="(customer.numberOfEmis - getPaidCount(customer)) + ' remaining'"></span> · 
+                                        <span class="text-slate-400" x-text="'Next due ' + getNextDueDate(customer)"></span>
+                                    </div>
+                                    <button @click="openScheduleModal(customer)" class="font-bold text-brand-blue hover:text-blue-700 transition">
+                                        Manage EMIs
+                                    </button>
+                                </div>
+
+                            </div>
+                        </template>
+
+                        <!-- Empty Search/List State -->
+                        <div x-show="filteredCustomers.length === 0" class="bg-white rounded-2xl border border-slate-200/80 p-8 text-center text-slate-400 shadow-sm">
+                            <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-300 flex items-center justify-center mx-auto mb-3 text-xl">
+                                <i class="fa-solid fa-folder-open"></i>
+                            </div>
+                            <p class="font-bold text-slate-700 text-sm">No customer loans in this profile</p>
+                            <p class="text-xs text-slate-400 mt-1">Add a new loan record to start tracking EMIs for this account.</p>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </template>
+
+    </div>
+
+    <!-- ====================================================================== -->
+    <!-- 3. MODALS (User Profile, Manage EMI, Add/Edit Loan, View Details)      -->
+    <!-- ====================================================================== -->
+
+    <!-- MODAL 0: USER PROFILE & ACCOUNT DETAILS MODAL -->
+    <div x-show="showProfileModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div x-show="showProfileModal" x-transition.opacity @click="showProfileModal = false" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+
+        <div x-show="showProfileModal" x-transition class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden z-10 flex flex-col">
+            <div class="bg-white p-6 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 rounded-2xl bg-brand-blue/10 text-brand-blue font-black text-xl flex items-center justify-center" x-text="getInitials(currentUserProfile ? currentUserProfile.fullName : '')"></div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-lg leading-tight" x-text="currentUserProfile ? currentUserProfile.fullName : 'User Profile'"></h3>
+                        <p class="text-xs font-mono text-brand-blue font-bold mt-0.5" x-text="'UID: ' + currentUserId"></p>
+                    </div>
+                </div>
+                <button @click="showProfileModal = false" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <form @submit.prevent="saveUserProfile()" class="p-6 space-y-4 text-xs">
+                <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-1">
+                    <div class="text-[11px] text-slate-400 font-medium">Auth Identifier (UID)</div>
+                    <div class="font-mono font-extrabold text-slate-800 text-xs truncate flex items-center justify-between">
+                        <span x-text="currentUserId"></span>
+                        <span class="text-[10px] bg-blue-100 text-brand-blue font-sans px-2 py-0.5 rounded-full font-bold ml-2">Verified Account</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Full Name</label>
+                    <input type="text" x-model="profileEditForm.fullName" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Store / Business Name</label>
+                    <input type="text" x-model="profileEditForm.storeName" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Phone Number</label>
+                        <input type="tel" x-model="profileEditForm.phone" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Email</label>
+                        <input type="email" x-model="profileEditForm.email" disabled class="w-full px-3.5 py-2.5 bg-slate-100 text-slate-500 border border-slate-200 rounded-xl text-xs font-semibold">
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between pt-4 border-t border-slate-100">
+                    <div class="text-[11px] text-slate-400">
+                        Joined: <span x-text="formatDate(currentUserProfile ? currentUserProfile.joinedAt : null)"></span>
+                    </div>
+                    <button type="submit" class="px-5 py-2.5 bg-brand-blue hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 1: Manage EMI Breakdown Modal -->
+    <div x-show="showScheduleModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div x-show="showScheduleModal" x-transition.opacity @click="showScheduleModal = false" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+
+        <div x-show="showScheduleModal" x-transition class="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden z-10 flex flex-col max-h-[90vh]">
+            <div class="bg-white px-6 py-4 flex justify-between items-center border-b border-slate-100">
+                <div>
+                    <h3 class="font-bold text-slate-900 text-base" x-text="activeScheduleCustomer ? activeScheduleCustomer.name + ' - EMI Breakdown' : 'EMI Schedule'"></h3>
+                    <p class="text-xs text-slate-400 mt-0.5" x-text="activeScheduleCustomer ? 'Loan ID: ' + activeScheduleCustomer.loanId + ' • Tenure: ' + activeScheduleCustomer.numberOfEmis + ' Months' : ''"></p>
+                </div>
+                <button @click="showScheduleModal = false" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <template x-if="activeScheduleCustomer">
+                <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex items-center justify-between text-xs">
+                    <div class="font-semibold text-slate-600">
+                        Paid: <span class="font-bold text-brand-blue" x-text="getPaidCount(activeScheduleCustomer)"></span> / <span x-text="activeScheduleCustomer.numberOfEmis"></span>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button @click="setAllEmisStatus(activeScheduleCustomer, true)" class="px-3 py-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-lg font-bold text-[11px] transition">
+                            Mark All Paid
+                        </button>
+                        <button @click="setAllEmisStatus(activeScheduleCustomer, false)" class="px-3 py-1 bg-slate-200 text-slate-700 hover:bg-slate-300 rounded-lg font-bold text-[11px] transition">
+                            Reset All
+                        </button>
+                    </div>
+                </div>
+            </template>
+
+            <div class="p-6 overflow-y-auto space-y-2.5 custom-scrollbar flex-1 bg-slate-50/30">
+                <template x-if="activeScheduleCustomer && activeScheduleCustomer.schedule">
+                    <template x-for="(emi, index) in activeScheduleCustomer.schedule" :key="index">
+                        <div class="p-3.5 rounded-2xl border transition flex items-center justify-between"
+                             :class="emi.isPaid ? 'bg-emerald-50/40 border-emerald-200/80' : 'bg-white border-slate-200/80 shadow-sm'">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-8 h-8 rounded-xl font-bold text-xs flex items-center justify-center"
+                                     :class="emi.isPaid ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'"
+                                     x-text="'#' + emi.month">
+                                </div>
+                                <div>
+                                    <div class="text-xs font-bold text-slate-900" x-text="'Month ' + emi.month"></div>
+                                    <div class="text-[11px] text-slate-400" x-text="'Due: ' + formatDate(emi.dueDate)"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center space-x-4">
+                                <span class="font-extrabold text-sm text-slate-900" x-text="formatCurrency(emi.amount)"></span>
+                                <button @click="toggleSingleEmi(activeScheduleCustomer, index)" 
+                                        class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1"
+                                        :class="emi.isPaid ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+                                    <i class="fa-solid text-[10px]" :class="emi.isPaid ? 'fa-check' : 'fa-circle-thin'"></i>
+                                    <span x-text="emi.isPaid ? 'Paid' : 'Pay'"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </template>
+            </div>
+
+            <div class="bg-white px-6 py-4 border-t border-slate-100 flex justify-end">
+                <button @click="showScheduleModal = false" class="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition">Close Window</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Add/Edit Loan Form Modal -->
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div x-show="showModal" x-transition.opacity @click="showModal = false" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+
+        <div x-show="showModal" x-transition class="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden z-10 max-h-[92vh] flex flex-col">
+            <div class="bg-white px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-bold text-slate-900 text-base" x-text="modalMode === 'add' ? 'New Loan Record' : 'Edit Customer Record'"></h3>
+                <button @click="showModal = false" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <form @submit.prevent="saveCustomer()" class="p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Customer Full Name *</label>
+                    <input type="text" x-model="formData.name" required placeholder="e.g. Ramesh Verma" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Loan ID *</label>
+                        <input type="text" x-model="formData.loanId" required placeholder="LN-1001" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
+                        <input type="tel" x-model="formData.phone" required placeholder="+91 9876543210" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Product Details *</label>
+                    <input type="text" x-model="formData.productDetails" required placeholder="e.g. Smart LED TV 55 Inch" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Customer Address</label>
+                    <input type="text" x-model="formData.address" placeholder="Address line details" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-brand-blue focus:outline-none transition">
+                </div>
+
+                <!-- Financial Calculation Card -->
+                <div class="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-extrabold uppercase text-brand-blue tracking-wider">Financial Engine</span>
+                        <button type="button" @click="recalculateEmi()" class="text-[11px] font-bold text-brand-blue hover:underline">
+                            Recalculate EMI
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Total (₹)</label>
+                            <input type="number" min="0" step="0.01" x-model.number="formData.totalLoanAmount" @input="recalculateEmi()" required class="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Down Payment</label>
+                            <input type="number" min="0" step="0.01" x-model.number="formData.downPaymentAmount" @input="recalculateEmi()" required class="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-brand-blue mb-1">Monthly EMI</label>
+                            <input type="number" min="0" step="0.01" x-model.number="formData.monthlyEmiAmount" required class="w-full px-2.5 py-2 bg-white border border-blue-300 font-extrabold text-brand-blue rounded-lg text-xs focus:outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Tenure (Months) *</label>
+                        <input type="number" min="1" max="120" x-model.number="formData.numberOfEmis" @input="recalculateEmi()" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">First EMI Date *</label>
+                        <input type="date" x-model="formData.firstEmiDate" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Down Payment Status</label>
+                    <select x-model="formData.dpStatus" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white">
+                        <option value="Paid">Paid</option>
+                        <option value="Due">Pending</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-4 border-t border-slate-100">
+                    <button type="button" @click="showModal = false" class="px-5 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition">Cancel</button>
+                    <button type="submit" class="px-5 py-2.5 bg-brand-blue hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition">
+                        <i class="fa-solid fa-cloud-arrow-up mr-1"></i> Save to Record
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 3: View Customer Details Modal -->
+    <div x-show="showDetailsModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div x-show="showDetailsModal" x-transition.opacity @click="showDetailsModal = false" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+
+        <div x-show="showDetailsModal" x-transition class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden z-10 flex flex-col">
+            <template x-if="viewingCustomer">
+                <div>
+                    <div class="bg-white p-6 border-b border-slate-100 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-12 h-12 rounded-2xl bg-blue-100 text-brand-blue font-bold text-lg flex items-center justify-center" x-text="getInitials(viewingCustomer.name)"></div>
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-lg leading-tight" x-text="viewingCustomer.name"></h3>
+                                <p class="text-xs font-medium text-slate-400 mt-0.5" x-text="viewingCustomer.loanId"></p>
+                            </div>
+                        </div>
+                        <button @click="showDetailsModal = false" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center">
+                            <i class="fa-solid fa-xmark text-sm"></i>
+                        </button>
+                    </div>
+
+                    <div class="p-6 space-y-4 text-xs">
+                        <div class="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <div>
+                                <span class="text-slate-400 block mb-0.5">Product Purchased</span>
+                                <span class="font-bold text-slate-800 text-sm" x-text="viewingCustomer.productDetails"></span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block mb-0.5">Phone</span>
+                                <span class="font-semibold text-slate-800" x-text="viewingCustomer.phone"></span>
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between py-1 border-b border-slate-100">
+                                <span class="text-slate-500">Total Price</span>
+                                <span class="font-bold text-slate-900" x-text="formatCurrency(viewingCustomer.totalLoanAmount)"></span>
+                            </div>
+                            <div class="flex justify-between py-1 border-b border-slate-100">
+                                <span class="text-slate-500">Down Payment</span>
+                                <span class="font-bold" :class="viewingCustomer.dpStatus === 'Paid' ? 'text-emerald-600' : 'text-amber-500'" x-text="formatCurrency(viewingCustomer.downPaymentAmount) + ' (' + viewingCustomer.dpStatus + ')'"></span>
+                            </div>
+                            <div class="flex justify-between py-1 border-b border-slate-100">
+                                <span class="text-slate-500">Monthly EMI</span>
+                                <span class="font-bold text-brand-blue" x-text="formatCurrency(viewingCustomer.monthlyEmiAmount)"></span>
+                            </div>
+                            <div class="flex justify-between py-1">
+                                <span class="text-slate-500">Address</span>
+                                <span class="font-medium text-slate-800 text-right max-w-[200px]" x-text="viewingCustomer.address || 'N/A'"></span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-2 pt-4 border-t border-slate-100">
+                            <button @click="openModal('edit', viewingCustomer); showDetailsModal = false;" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">
+                                <i class="fa-solid fa-pen mr-1"></i> Edit Record
+                            </button>
+                            <button @click="confirmDelete(viewingCustomer); showDetailsModal = false;" class="flex-1 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl transition">
+                                <i class="fa-solid fa-trash mr-1"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- MODAL 4: Delete Confirmation Modal -->
+    <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div x-show="showDeleteModal" x-transition.opacity @click="showDeleteModal = false" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+        <div x-show="showDeleteModal" x-transition class="relative bg-white rounded-3xl shadow-xl w-full max-w-xs p-6 text-center z-10">
+            <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3 text-lg">
+                <i class="fa-solid fa-trash"></i>
+            </div>
+            <h3 class="font-bold text-slate-900 text-base">Delete record?</h3>
+            <p class="text-xs text-slate-500 mt-1">This loan record will be permanently deleted from your user profile database.</p>
+            <div class="flex justify-center space-x-2 mt-5">
+                <button @click="showDeleteModal = false" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">Cancel</button>
+                <button @click="executeDelete()" class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-sm">Delete Record</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====================================================================== -->
+    <!-- 4. FIREBASE CLOUD & APPLICATION SCRIPTS                                -->
+    <!-- ====================================================================== -->
+    <script type="module">
+        // Firebase Cloud Module Initialization
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInWithEmailAndPassword, 
+            createUserWithEmailAndPassword, 
+            signInWithCustomToken,
+            signInAnonymously,
+            onAuthStateChanged, 
+            signOut 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            setDoc, 
+            getDoc, 
+            onSnapshot 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase Configuration Guard
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'pos-loan-app-v2';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : {
+                apiKey: "demo-api-key",
+                authDomain: "demo-app.firebaseapp.com",
+                projectId: "demo-app-pos",
+                storageBucket: "demo-app.appspot.com",
+                messagingSenderId: "123456789",
+                appId: "1:123456789:web:demo"
+            };
+
+        // Check if API key is valid real config
+        const isLiveFirebase = firebaseConfig.apiKey && firebaseConfig.apiKey !== "demo-api-key";
+
+        let app, db, auth;
+        if (isLiveFirebase) {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                window._firebaseLoaded = true;
+            } catch(e) {
+                console.warn("Firebase initialize error, using local fallback", e);
+                window._firebaseLoaded = false;
+            }
+        } else {
+            window._firebaseLoaded = false;
+        }
+
+        // Expose Cloud / Local Fallback Helpers to Alpine Engine
+        window.cloudSync = {
+            getAppId() {
+                return appId;
+            },
+
+            onAuthChange(callback) {
+                if (window._firebaseLoaded && auth) {
+                    return onAuthStateChanged(auth, callback);
+                } else {
+                    // Local fallback session check
+                    const session = localStorage.getItem('local_pos_session');
+                    if (session) {
+                        callback(JSON.parse(session));
+                    } else {
+                        callback(null);
+                    }
+                    return () => {};
+                }
+            },
+
+            async registerEmailUser(email, password) {
+                if (window._firebaseLoaded && auth) {
+                    return await createUserWithEmailAndPassword(auth, email, password);
+                }
+                // Local Fallback Registration
+                const mockUser = { uid: 'local-' + Date.now(), email: email };
+                localStorage.setItem('local_pos_session', JSON.stringify(mockUser));
+                return { user: mockUser };
+            },
+
+            async loginEmailUser(email, password) {
+                if (window._firebaseLoaded && auth) {
+                    return await signInWithEmailAndPassword(auth, email, password);
+                }
+                // Local Fallback Login
+                const mockUser = { uid: 'local-demo-user', email: email };
+                localStorage.setItem('local_pos_session', JSON.stringify(mockUser));
+                return { user: mockUser };
+            },
+
+            subscribeUserLoans(userId, callback, errorCb) {
+                if (window._firebaseLoaded && db) {
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'loans_record');
+                    return onSnapshot(docRef, (docSnap) => {
+                        if (docSnap.exists()) {
+                            callback(docSnap.data().items || []);
+                        } else {
+                            callback(null);
+                        }
+                    }, errorCb);
+                } else {
+                    const localData = localStorage.getItem('pos_loans_' + userId);
+                    callback(localData ? JSON.parse(localData) : null);
+                    return () => {};
+                }
+            },
+
+            async saveUserLoans(userId, loansArray) {
+                localStorage.setItem('pos_loans_' + userId, JSON.stringify(loansArray));
+                if (window._firebaseLoaded && db) {
+                    try {
+                        const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'loans_record');
+                        await setDoc(docRef, {
+                            items: loansArray,
+                            updatedAt: new Date().toISOString()
+                        }, { merge: true });
+                    } catch (e) {
+                        console.error("Firestore Loans Save Error:", e);
+                    }
+                }
+            },
+
+            async fetchUserProfile(userId) {
+                const localProf = localStorage.getItem('pos_profile_' + userId);
+                if (localProf) return JSON.parse(localProf);
+
+                if (window._firebaseLoaded && db) {
+                    try {
+                        const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'user_profile');
+                        const docSnap = await getDoc(docRef);
+                        return docSnap.exists() ? docSnap.data() : null;
+                    } catch (e) {
+                        console.error("Firestore Profile Fetch Error:", e);
+                        return null;
+                    }
+                }
+                return null;
+            },
+
+            async saveUserProfileCloud(userId, profileObj) {
+                localStorage.setItem('pos_profile_' + userId, JSON.stringify(profileObj));
+                if (window._firebaseLoaded && db) {
+                    try {
+                        const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'user_profile');
+                        await setDoc(docRef, {
+                            ...profileObj,
+                            updatedAt: new Date().toISOString()
+                        }, { merge: true });
+                    } catch (e) {
+                        console.error("Firestore Profile Save Error:", e);
+                    }
+                }
+            },
+
+            async logout() {
+                localStorage.removeItem('local_pos_session');
+                if (window._firebaseLoaded && auth) {
+                    await signOut(auth);
+                }
+            }
+        };
+    </script>
+
+    <script>
+        // Main Alpine.js Application Engine
+        function posApp() {
+            return {
+                authMode: 'login',
+                userLoggedIn: false,
+                authLoading: false,
+                showPassword: false,
+                isSyncing: false,
+                syncStatus: 'Ready',
+                
+                // Auth Forms State
+                loginForm: {
+                    email: '',
+                    password: ''
+                },
+                registerForm: {
+                    fullName: '',
+                    storeName: '',
+                    phone: '',
+                    email: '',
+                    password: ''
+                },
+                
+                // Current User Account Details
+                currentUserId: null,
+                currentUserProfile: null,
+                unsubscribeCloudListener: null,
+
+                // Toast Notification State
+                toast: {
+                    show: false,
+                    message: '',
+                    type: 'success'
+                },
+
+                // Customer Loan Records
+                customers: [],
+                searchQuery: '',
+                statusFilter: 'all',
+
+                // Modal Controls
+                showModal: false,
+                showScheduleModal: false,
+                showDetailsModal: false,
+                showDeleteModal: false,
+                showProfileModal: false,
+                deletingCustomerId: null,
+                activeScheduleCustomer: null,
+                viewingCustomer: null,
+                modalMode: 'add',
+
+                // Form State for Adding/Editing Loans
+                formData: {
+                    id: null,
+                    name: '',
+                    address: '',
+                    phone: '',
+                    loanId: '',
+                    productDetails: '',
+                    totalLoanAmount: 12000,
+                    downPaymentAmount: 2000,
+                    monthlyEmiAmount: 2500,
+                    numberOfEmis: 4,
+                    firstEmiDate: '',
+                    dpStatus: 'Due'
+                },
+
+                // Profile Edit Form State
+                profileEditForm: {
+                    fullName: '',
+                    storeName: '',
+                    phone: '',
+                    email: ''
+                },
+
+                // -------------------------------------------------------------
+                // APP INITIALIZATION & AUTH LISTENER
+                // -------------------------------------------------------------
+                initApp() {
+                    if (window.cloudSync) {
+                        window.cloudSync.onAuthChange(async (firebaseUser) => {
+                            if (firebaseUser) {
+                                this.currentUserId = firebaseUser.uid;
+                                this.userLoggedIn = true;
+
+                                const profile = await window.cloudSync.fetchUserProfile(firebaseUser.uid);
+                                if (profile) {
+                                    this.currentUserProfile = profile;
+                                } else {
+                                    this.currentUserProfile = {
+                                        fullName: firebaseUser.displayName || 'POS Merchant',
+                                        storeName: 'My POS Store',
+                                        phone: firebaseUser.phoneNumber || 'N/A',
+                                        email: firebaseUser.email || '',
+                                        joinedAt: new Date().toISOString()
+                                    };
+                                    window.cloudSync.saveUserProfileCloud(firebaseUser.uid, this.currentUserProfile);
+                                }
+
+                                this.setupUserCloudListener(firebaseUser.uid);
+                            } else {
+                                this.userLoggedIn = false;
+                                this.currentUserId = null;
+                                this.currentUserProfile = null;
+                                this.customers = [];
+                                if (this.unsubscribeCloudListener) {
+                                    this.unsubscribeCloudListener();
+                                    this.unsubscribeCloudListener = null;
+                                }
+                                this.syncStatus = 'Logged Out';
+                            }
+                        });
+                    }
+                },
+
+                showToast(msg, type = 'success') {
+                    this.toast.message = msg;
+                    this.toast.type = type;
+                    this.toast.show = true;
+                    setTimeout(() => {
+                        this.toast.show = false;
+                    }, 4000);
+                },
+
+                // -------------------------------------------------------------
+                // AUTHENTICATION HANDLERS
+                // -------------------------------------------------------------
+                async handleRegister() {
+                    if (!this.registerForm.fullName || !this.registerForm.email || !this.registerForm.password) {
+                        this.showToast("Please complete all required fields.", "error");
+                        return;
+                    }
+
+                    this.authLoading = true;
+                    try {
+                        const userCred = await window.cloudSync.registerEmailUser(
+                            this.registerForm.email.trim(),
+                            this.registerForm.password
+                        );
+
+                        const userObj = userCred.user;
+                        this.currentUserProfile = {
+                            fullName: this.registerForm.fullName.trim(),
+                            storeName: this.registerForm.storeName.trim() || 'POS Merchant',
+                            phone: this.registerForm.phone.trim(),
+                            email: this.registerForm.email.trim(),
+                            joinedAt: new Date().toISOString()
+                        };
+
+                        await window.cloudSync.saveUserProfileCloud(userObj.uid, this.currentUserProfile);
+                        this.loadInitialSampleData(userObj.uid);
+
+                        this.showToast("Account created! Logged in as " + this.currentUserProfile.fullName);
+                        this.registerForm = { fullName: '', storeName: '', phone: '', email: '', password: '' };
+                        
+                        // Refresh app state for local session
+                        this.initApp();
+                    } catch (err) {
+                        console.error("Registration Error:", err);
+                        this.showToast(err.message || "Registration failed. Try another email.", "error");
+                    } finally {
+                        this.authLoading = false;
+                    }
+                },
+
+                async handleLogin() {
+                    if (!this.loginForm.email || !this.loginForm.password) {
+                        this.showToast("Please enter both email and password.", "error");
+                        return;
+                    }
+
+                    this.authLoading = true;
+                    try {
+                        await window.cloudSync.loginEmailUser(
+                            this.loginForm.email.trim(),
+                            this.loginForm.password
+                        );
+                        this.showToast("Signed in successfully!");
+                        this.initApp();
+                    } catch (err) {
+                        console.error("Login Error:", err);
+                        this.showToast("Invalid email or password. Please try again.", "error");
+                    } finally {
+                        this.authLoading = false;
+                    }
+                },
+
+                async quickDemoLogin() {
+                    this.authMode = 'login';
+                    this.loginForm.email = 'demo@posloan.com';
+                    this.loginForm.password = 'demopassword';
+
+                    this.authLoading = true;
+                    try {
+                        await window.cloudSync.loginEmailUser(this.loginForm.email, this.loginForm.password);
+                        this.showToast("Demo sign in successful!");
+                        this.initApp();
+                    } catch (err) {
+                        try {
+                            this.registerForm = {
+                                fullName: 'Demo Merchant',
+                                storeName: 'Demo POS Store',
+                                phone: '9876543210',
+                                email: 'demo@posloan.com',
+                                password: 'demopassword'
+                            };
+                            await this.handleRegister();
+                        } catch (e) {
+                            this.showToast("Demo sign in error", "error");
+                        }
+                    } finally {
+                        this.authLoading = false;
+                    }
+                },
+
+                async logoutUser() {
+                    if (this.unsubscribeCloudListener) {
+                        this.unsubscribeCloudListener();
+                    }
+                    await window.cloudSync.logout();
+                    this.userLoggedIn = false;
+                    this.currentUserId = null;
+                    this.currentUserProfile = null;
+                    this.loginForm = { email: '', password: '' };
+                    this.showToast("Logged out successfully.");
+                },
+
+                // -------------------------------------------------------------
+                // DATA MANAGEMENT & SYNC
+                // -------------------------------------------------------------
+                setupUserCloudListener(userId) {
+                    this.isSyncing = true;
+                    this.syncStatus = 'Syncing...';
+
+                    if (this.unsubscribeCloudListener) {
+                        this.unsubscribeCloudListener();
+                    }
+
+                    this.unsubscribeCloudListener = window.cloudSync.subscribeUserLoans(
+                        userId,
+                        (cloudLoans) => {
+                            this.isSyncing = false;
+                            this.syncStatus = 'Synced';
+                            if (cloudLoans !== null) {
+                                this.customers = cloudLoans;
+                            } else {
+                                this.loadInitialSampleData(userId);
+                            }
+                        },
+                        (err) => {
+                            this.isSyncing = false;
+                            this.syncStatus = 'Offline Mode';
+                            this.loadLocalBackup(userId);
+                        }
+                    );
+                },
+
+                forceSync() {
+                    if (!this.currentUserId) return;
+                    this.isSyncing = true;
+                    window.cloudSync.saveUserLoans(this.currentUserId, this.customers).then(() => {
+                        this.isSyncing = false;
+                        this.showToast("Sync complete.");
+                    });
+                },
+
+                loadLocalBackup(userId) {
+                    const local = localStorage.getItem('pos_loans_' + userId);
+                    if (local) {
+                        try { 
+                            this.customers = JSON.parse(local); 
+                        } catch(e) { 
+                            this.loadInitialSampleData(userId); 
+                        }
+                    } else {
+                        this.loadInitialSampleData(userId);
+                    }
+                },
+
+                loadInitialSampleData(userId) {
+                    const today = new Date().toISOString().split('T')[0];
+                    const c1Schedule = this.generateEmiSchedule(today, 3, 2667);
+                    const c2Schedule = this.generateEmiSchedule(today, 12, 5000);
+                    c2Schedule[0].isPaid = true;
+                    c2Schedule[1].isPaid = true;
+
+                    this.customers = [
+                        {
+                            id: 'c-' + Date.now() + '-1',
+                            name: 'Anil Mehta',
+                            address: 'Tech Park, Block B, Floor 2',
+                            phone: '+91 99887 76655',
+                            loanId: 'LN-1001',
+                            productDetails: 'Smartphone Pro Max',
+                            totalLoanAmount: 8001,
+                            downPaymentAmount: 0,
+                            monthlyEmiAmount: 2667,
+                            numberOfEmis: 3,
+                            firstEmiDate: today,
+                            dpStatus: 'Due',
+                            schedule: c1Schedule
+                        },
+                        {
+                            id: 'c-' + Date.now() + '-2',
+                            name: 'Rahul Sharma',
+                            address: '42 MG Road, Indiranagar',
+                            phone: '+91 98765 43210',
+                            loanId: 'LN-2026-01',
+                            productDetails: '4K Smart LED TV 55"',
+                            totalLoanAmount: 70000,
+                            downPaymentAmount: 10000,
+                            monthlyEmiAmount: 5000,
+                            numberOfEmis: 12,
+                            firstEmiDate: today,
+                            dpStatus: 'Paid',
+                            schedule: c2Schedule
+                        }
+                    ];
+                    this.forceSync();
+                },
+
+                saveUserProfile() {
+                    if (!this.profileEditForm.fullName || !this.profileEditForm.phone) {
+                        this.showToast("Full Name and Phone are required.", "error");
+                        return;
+                    }
+
+                    this.currentUserProfile.fullName = this.profileEditForm.fullName.trim();
+                    this.currentUserProfile.storeName = this.profileEditForm.storeName.trim();
+                    this.currentUserProfile.phone = this.profileEditForm.phone.trim();
+
+                    if (window.cloudSync && this.currentUserId) {
+                        window.cloudSync.saveUserProfileCloud(this.currentUserId, this.currentUserProfile);
+                    }
+
+                    this.showToast("Profile details updated!");
+                    this.showProfileModal = false;
+                },
+
+                openProfileModal() {
+                    if (this.currentUserProfile) {
+                        this.profileEditForm = {
+                            fullName: this.currentUserProfile.fullName,
+                            storeName: this.currentUserProfile.storeName,
+                            phone: this.currentUserProfile.phone,
+                            email: this.currentUserProfile.email || ''
+                        };
+                    }
+                    this.showProfileModal = true;
+                },
+
+                // -------------------------------------------------------------
+                // LOAN CALCULATIONS & DOM HELPER FUNCTIONS
+                // -------------------------------------------------------------
+                generateEmiSchedule(startDateStr, tenureMonths, monthlyAmount) {
+                    const schedule = [];
+                    if (!startDateStr || !tenureMonths) return schedule;
+
+                    for (let i = 0; i < tenureMonths; i++) {
+                        const d = new Date(startDateStr);
+                        d.setMonth(d.getMonth() + i);
+                        schedule.push({
+                            month: i + 1,
+                            dueDate: d.toISOString().split('T')[0],
+                            amount: monthlyAmount || 0,
+                            isPaid: false
+                        });
+                    }
+                    return schedule;
+                },
+
+                recalculateEmi() {
+                    const remaining = (this.formData.totalLoanAmount || 0) - (this.formData.downPaymentAmount || 0);
+                    const tenure = this.formData.numberOfEmis || 1;
+                    this.formData.monthlyEmiAmount = remaining > 0 ? Math.round(remaining / tenure) : 0;
+                },
+
+                getInitials(name) {
+                    if (!name) return 'US';
+                    const parts = name.trim().split(' ');
+                    if (parts.length >= 2) {
+                        return (parts[0][0] + parts[1][0]).toUpperCase();
+                    }
+                    return name.substring(0, 2).toUpperCase();
+                },
+
+                getPaidCount(customer) {
+                    if (!customer || !customer.schedule) return 0;
+                    return customer.schedule.filter(s => s.isPaid).length;
+                },
+
+                getNextDueDate(customer) {
+                    if (!customer || !customer.schedule) return 'N/A';
+                    const pending = customer.schedule.find(s => !s.isPaid);
+                    return pending ? this.formatDate(pending.dueDate) : 'Completed';
+                },
+
+                getGreeting() {
+                    const hour = new Date().getHours();
+                    if (hour < 12) return "Good morning";
+                    if (hour < 17) return "Good afternoon";
+                    return "Good evening";
+                },
+
+                // -------------------------------------------------------------
+                // MODAL & CRUD ACTIONS FOR LOANS
+                // -------------------------------------------------------------
+                openModal(mode, customer = null) {
+                    this.modalMode = mode;
+                    if (mode === 'add') {
+                        const today = new Date().toISOString().split('T')[0];
+                        this.formData = {
+                            id: 'c-' + Date.now(),
+                            name: '',
+                            address: '',
+                            phone: '+91 ',
+                            loanId: 'LN-' + Math.floor(1000 + Math.random() * 9000),
+                            productDetails: '',
+                            totalLoanAmount: 12000,
+                            downPaymentAmount: 2000,
+                            monthlyEmiAmount: 2500,
+                            numberOfEmis: 4,
+                            firstEmiDate: today,
+                            dpStatus: 'Due'
+                        };
+                        this.recalculateEmi();
+                    } else if (mode === 'edit' && customer) {
+                        this.formData = JSON.parse(JSON.stringify(customer));
+                    }
+                    this.showModal = true;
+                },
+
+                viewCustomerDetails(customer) {
+                    this.viewingCustomer = customer;
+                    this.showDetailsModal = true;
+                },
+
+                saveCustomer() {
+                    if (this.modalMode === 'add') {
+                        const newSchedule = this.generateEmiSchedule(
+                            this.formData.firstEmiDate,
+                            this.formData.numberOfEmis,
+                            this.formData.monthlyEmiAmount
+                        );
+                        const record = { ...this.formData, schedule: newSchedule };
+                        this.customers.unshift(record);
+                        this.showToast("New loan record added.");
+                    } else {
+                        const idx = this.customers.findIndex(c => c.id === this.formData.id);
+                        if (idx !== -1) {
+                            const existingSchedule = this.customers[idx].schedule || [];
+                            const updatedSchedule = this.generateEmiSchedule(
+                                this.formData.firstEmiDate,
+                                this.formData.numberOfEmis,
+                                this.formData.monthlyEmiAmount
+                            );
+
+                            updatedSchedule.forEach((item, i) => {
+                                if (existingSchedule[i]) {
+                                    item.isPaid = existingSchedule[i].isPaid;
+                                }
+                            });
+
+                            this.customers[idx] = { ...this.formData, schedule: updatedSchedule };
+                            this.showToast("Loan record updated.");
+                        }
+                    }
+                    this.forceSync();
+                    this.showModal = false;
+                },
+
+                toggleDpStatus(customer) {
+                    customer.dpStatus = customer.dpStatus === 'Paid' ? 'Due' : 'Paid';
+                    this.forceSync();
+                },
+
+                openScheduleModal(customer) {
+                    this.activeScheduleCustomer = customer;
+                    this.showScheduleModal = true;
+                },
+
+                toggleSingleEmi(customer, index) {
+                    if (customer && customer.schedule && customer.schedule[index]) {
+                        customer.schedule[index].isPaid = !customer.schedule[index].isPaid;
+                        this.forceSync();
+                    }
+                },
+
+                setAllEmisStatus(customer, status) {
+                    if (customer && customer.schedule) {
+                        customer.schedule.forEach(item => item.isPaid = status);
+                        this.forceSync();
+                    }
+                },
+
+                confirmDelete(customer) {
+                    this.deletingCustomerId = customer.id;
+                    this.showDeleteModal = true;
+                },
+
+                executeDelete() {
+                    if (this.deletingCustomerId) {
+                        this.customers = this.customers.filter(c => c.id !== this.deletingCustomerId);
+                        this.forceSync();
+                        this.showToast("Loan record removed.");
+                    }
+                    this.showDeleteModal = false;
+                    this.deletingCustomerId = null;
+                },
+
+                // -------------------------------------------------------------
+                // COMPUTED PROPERTIES (FILTERS & STATS)
+                // -------------------------------------------------------------
+                get filteredCustomers() {
+                    return this.customers.filter(c => {
+                        const q = this.searchQuery.toLowerCase().trim();
+                        const matchesSearch = !q || 
+                            c.name.toLowerCase().includes(q) ||
+                            (c.phone && c.phone.toLowerCase().includes(q)) ||
+                            c.loanId.toLowerCase().includes(q) ||
+                            c.productDetails.toLowerCase().includes(q);
+
+                        if (!matchesSearch) return false;
+
+                        const paidCount = this.getPaidCount(c);
+                        if (this.statusFilter === 'pending') {
+                            return paidCount < c.numberOfEmis;
+                        }
+                        if (this.statusFilter === 'cleared') {
+                            return paidCount === c.numberOfEmis;
+                        }
+                        if (this.statusFilter === 'dp_due') {
+                            return c.dpStatus === 'Due';
+                        }
+
+                        return true;
+                    });
+                },
+
+                get stats() {
+                    let totalLoans = this.customers.length;
+                    let fullyPaidCount = 0;
+                    let pendingDpCount = 0;
+
+                    this.customers.forEach(c => {
+                        const paidEmis = this.getPaidCount(c);
+                        const totalEmis = c.numberOfEmis || 1;
+                        
+                        if (paidEmis === totalEmis) fullyPaidCount++;
+                        if (c.dpStatus === 'Due') pendingDpCount++;
+                    });
+
+                    return {
+                        totalLoans,
+                        fullyPaidCount,
+                        pendingDpCount
+                    };
+                },
+
+                formatDate(dStr) {
+                    if (!dStr) return 'N/A';
+                    const date = new Date(dStr);
+                    return date.toLocaleDateString('en-GB', { day: '02-digit', month: 'short', year: 'numeric' });
+                },
+
+                formatCurrency(val) {
+                    return '₹' + Number(val || 0).toLocaleString('en-IN');
+                }
+            };
+        }
+    </script>
+</body>
+</html>
